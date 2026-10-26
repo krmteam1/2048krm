@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#1a2c26">
+<title>2048</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0; height: 100%; overflow: hidden;
+    background: #1a2c26; color: #e0e8e2;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .app { height: 100dvh; display: flex; flex-direction: column; padding: 8px; gap: 6px; overflow: hidden; }
+
+  header { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-shrink: 0; padding: 4px 6px; }
+  .title { font-size: clamp(20px, 6vw, 28px); font-weight: 800; color: #7ada8e; letter-spacing: 1px; }
+  .scores { display: flex; gap: 14px; font-size: clamp(10px, 2.8vw, 12px); color: #a0b8a8; }
+  .scores > div { text-align: right; }
+  .scores span { display: block; color: #e0e8e2; font-weight: 700; font-size: clamp(14px, 4vw, 17px); line-height: 1.1; }
+
+  .top-buttons { display: flex; gap: 6px; flex-shrink: 0; justify-content: center; flex-wrap: wrap; }
+  .top-buttons button, .top-buttons a {
+    padding: 6px 10px; border-radius: 8px; border: none;
+    background: #2e4a3f; color: #e0e8e2;
+    font-size: clamp(11px, 3.2vw, 13px); font-weight: 600; font-family: inherit;
+    cursor: pointer; text-decoration: none; line-height: 1.4;
+    transition: background 0.15s, transform 0.05s;
+  }
+  .top-buttons button:hover, .top-buttons a:hover { background: #3d5648; }
+  .top-buttons button:active, .top-buttons a:active { transform: scale(0.96); }
+
+  main { flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; padding: 4px 0; }
+  .board-wrapper {
+    position: relative;
+    width: min(92vw, calc(100dvh - 300px), 440px);
+    aspect-ratio: 1; max-width: 100%;
+  }
+  .board {
+    position: absolute; inset: 0;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(4, 1fr);
+    gap: 6px; padding: 6px;
+    background: #22362e; border-radius: 10px;
+    touch-action: none;
+  }
+  .cell { background: #2a4038; border-radius: 6px; position: relative; overflow: hidden; }
+  .tile {
+    position: absolute; inset: 0; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 800; color: #e8f0ea; background: #33473d;
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(20px, 7vw, 36px);
+    will-change: transform;
+  }
+  .tile[data-value="2"]    { background: #2e4438; color: #7a9a82; }
+  .tile[data-value="4"]    { background: #3a5446; color: #a0c0a8; }
+  .tile[data-value="8"]    { background: #4a6a56; }
+  .tile[data-value="16"]   { background: #588066; }
+  .tile[data-value="32"]   { background: #6a9a78; }
+  .tile[data-value="64"]   { background: #7eb88a; }
+  .tile[data-value="128"]  { background: #9ed09e; color: #1a2c26; font-size: clamp(18px, 6vw, 32px); }
+  .tile[data-value="256"]  { background: #b8dca8; color: #1a2c26; font-size: clamp(18px, 6vw, 32px); }
+  .tile[data-value="512"]  { background: #d4e4a0; color: #1a2c26; font-size: clamp(18px, 6vw, 32px); }
+  .tile[data-value="1024"] { background: #f0d080; color: #1a2c26; font-size: clamp(15px, 5vw, 26px); }
+  .tile[data-value="2048"] {
+    background: #f0b060; color: #1a2c26; font-size: clamp(15px, 5vw, 26px);
+    box-shadow: 0 0 24px rgba(240,176,96,0.55), inset 0 0 12px rgba(255,220,150,0.4);
+  }
+  .tile[data-value="4096"] { background: #f09060; color: #1a2c26; font-size: clamp(14px, 4.5vw, 24px); }
+  .tile[data-value="8192"] { background: #e06080; color: #fff;    font-size: clamp(14px, 4.5vw, 24px); }
+
+  .tile.pop  { animation: pop 0.18s ease-out; }
+  .tile.bump { animation: bump 0.2s ease-out; }
+  @keyframes pop {
+    0%   { transform: scale(0); opacity: 0; }
+    60%  { transform: scale(1.1); opacity: 1; }
+    100% { transform: scale(1); }
+  }
+  @keyframes bump {
+    0%   { transform: scale(1); }
+    50%  { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+
+  .overlay {
+    position: absolute; inset: 0; border-radius: 10px;
+    background: rgba(20, 36, 30, 0.92);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 12px; padding: 20px; text-align: center; z-index: 10;
+    opacity: 0; pointer-events: none; transition: opacity 0.3s;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .overlay h2 { margin: 0; font-size: clamp(20px, 6vw, 28px); color: #7ada8e; }
+  .overlay p  { margin: 0; color: #a0b8a8; font-size: clamp(12px, 3.4vw, 15px); line-height: 1.4; }
+  .overlay button {
+    padding: 10px 22px; background: #4a6a56; border: none; border-radius: 8px;
+    color: #fff; font-weight: 700; font-size: clamp(13px, 3.6vw, 15px);
+    cursor: pointer; font-family: inherit; transition: background 0.15s;
+  }
+  .overlay button:hover  { background: #588066; }
+  .overlay button:active { transform: scale(0.96); }
+
+  footer { flex-shrink: 0; display: flex; justify-content: center; padding-bottom: 4px; }
+  .dpad {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+    gap: 5px; width: clamp(130px, 36vw, 170px); aspect-ratio: 1;
+  }
+  .dpad button {
+    width: 100%; height: 100%; border: none; border-radius: 10px;
+    background: #2e4a3f; color: #e0e8e2;
+    font-size: clamp(18px, 5.5vw, 22px); font-weight: 700;
+    cursor: pointer; font-family: inherit; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    touch-action: none; transition: background 0.1s, transform 0.05s;
+  }
+  .dpad button:hover  { background: #3d5648; }
+  .dpad button:active { background: #4a6a56; transform: scale(0.92); }
+  .dpad button[data-dir="up"]    { grid-column: 2; grid-row: 1; }
+  .dpad button[data-dir="left"]  { grid-column: 1; grid-row: 2; }
+  .dpad button[data-dir="right"] { grid-column: 3; grid-row: 2; }
+  .dpad button[data-dir="down"]  { grid-column: 2; grid-row: 3; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title">2048</div>
+    <div class="scores">
+      <div>Pontos<span id="score">0</span></div>
+      <div>Recorde<span id="best">0</span></div>
+    </div>
+  </header>
+
+  <div class="top-buttons">
+    <button id="btn-start">▶ Iniciar</button>
+    <button id="btn-restart">🔄 Recomeçar</button>
+    <button id="btn-mute" aria-label="Silenciar">🔊</button>
+    <a href="https://livepix.gg/tvkrm" target="_blank" rel="noopener">💛 Apoiar</a>
+  </div>
+
+  <main>
+    <div class="board-wrapper">
+      <div class="board" id="board"></div>
+      <div class="overlay" id="overlay">
+        <h2 id="overlay-title"></h2>
+        <p id="overlay-text"></p>
+        <button id="overlay-btn"></button>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div class="dpad">
+      <button data-dir="up"    aria-label="Cima">↑</button>
+      <button data-dir="left"  aria-label="Esquerda">←</button>
+      <button data-dir="right" aria-label="Direita">→</button>
+      <button data-dir="down"  aria-label="Baixo">↓</button>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  const SIZE = 4;
+  const STORAGE_KEY = '2048-best-tvkrm';
+
+  let board = [];
+  let score = 0;
+  let best = 0;
+  try { best = parseInt(localStorage.getItem(STORAGE_KEY) || '0', 10) || 0; } catch (e) {}
+  let gameOver = false;
+  let won = false;
+  let keepPlaying = false;
+  let newTilePos = null;
+  let mergedPositions = [];
+  let started = false;
+
+  const boardEl      = document.getElementById('board');
+  const scoreEl      = document.getElementById('score');
+  const bestEl       = document.getElementById('best');
+  const overlayEl    = document.getElementById('overlay');
+  const overlayTitle = document.getElementById('overlay-title');
+  const overlayText  = document.getElementById('overlay-text');
+  const overlayBtn   = document.getElementById('overlay-btn');
+  const muteBtn      = document.getElementById('btn-mute');
+
+  bestEl.textContent = best;
+
+  // ---------- Áudio (Web Audio API) ----------
+  let audioCtx = null;
+  let muted = false;
+
+  function ensureAudio() {
+    if (!audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return; }
+    }
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+  }
+  function beep(freq, dur, type, vol) {
+    if (muted || !audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type || 'sine';
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(vol || 0.1, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + dur + 0.02);
+  }
+  function playMove() { ensureAudio(); beep(340, 0.05, 'sine', 0.07); }
+  function playMerge(gained) {
+    ensureAudio();
+    const base = 420 + Math.min(Math.log2(gained || 4), 12) * 40;
+    beep(base, 0.09, 'triangle', 0.11);
+    setTimeout(() => beep(base * 1.4, 0.07, 'sine', 0.08), 40);
+  }
+  function playWin() {
+    ensureAudio();
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.22, 'sine', 0.13), i * 100));
+  }
+  function playGameOver() {
+    ensureAudio();
+    [392, 311, 262].forEach((f, i) => setTimeout(() => beep(f, 0.28, 'sine', 0.12), i * 150));
+  }
+
+  // ---------- Lógica ----------
+  function newBoard() {
+    return Array.from({ length: SIZE }, () => Array(SIZE).fill(0));
+  }
+
+  function startGame() {
+    board = newBoard();
+    score = 0;
+    gameOver = false;
+    won = false;
+    keepPlaying = false;
+    newTilePos = null;
+    mergedPositions = [];
+    started = true;
+    overlayEl.classList.remove('show');
+    ensureAudio();
+    addRandomTile();
+    addRandomTile();
+    render();
+    updateScore();
+  }
+
+  function updateScore() {
+    scoreEl.textContent = score;
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      try { localStorage.setItem(STORAGE_KEY, String(best)); } catch (e) {}
+    }
+  }
+
+  function addRandomTile() {
+    const empty = [];
+    for (let i = 0; i < SIZE; i++)
+      for (let j = 0; j < SIZE; j++)
+        if (board[i][j] === 0) empty.push([i, j]);
+    if (!empty.length) return null;
+    const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+    board[r][c] = Math.random() < 0.9 ? 2 : 4;
+    return [r, c];
+  }
+
+  // Desliza e mescla uma linha (direção -> 0, 0, ... zeros à direita)
+  function slide(line) {
+    const arr = line.filter(x => x !== 0);
+    const result = [];
+    const mergedIdx = [];
+    let gained = 0;
+    for (let i = 0; i < arr.length; i++) {
+      if (i < arr.length - 1 && arr[i] === arr[i + 1]) {
+        const m = arr[i] * 2;
+        mergedIdx.push(result.length);
+        result.push(m);
+        gained += m;
+        i++;
+      } else {
+        result.push(arr[i]);
+      }
+    }
+    while (result.length < SIZE) result.push(0);
+    return { result, mergedIdx, gained };
+  }
+
+  function move(dir) {
+    if (!started) { startGame(); return; }
+    if (gameOver || (won && !keepPlaying)) return;
+
+    const old = board.map(r => r.slice());
+    const newMerges = [];
+    let gained = 0;
+
+    for (let i = 0; i < SIZE; i++) {
+      let line;
+      if (dir === 'left')       line = board[i].slice();
+      else if (dir === 'right') line = board[i].slice().reverse();
+      else if (dir === 'up')    line = board.map(r => r[i]);
+      else                      line = board.map(r => r[i]).reverse();
+
+      const { result, mergedIdx, gained: g } = slide(line);
+      gained += g;
+
+      if (dir === 'left') {
+        board[i] = result.slice();
+        mergedIdx.forEach(k => newMerges.push([i, k]));
+      } else if (dir === 'right') {
+        board[i] = result.slice().reverse();
+        mergedIdx.forEach(k => newMerges.push([i, SIZE - 1 - k]));
+      } else if (dir === 'up') {
+        result.forEach((v, k) => { board[k][i] = v; });
+        mergedIdx.forEach(k => newMerges.push([k, i]));
+      } else {
+        const rev = result.slice().reverse();
+        rev.forEach((v, k) => { board[k][i] = v; });
+        mergedIdx.forEach(k => newMerges.push([SIZE - 1 - k, i]));
+      }
+    }
+
+    let moved = false;
+    for (let i = 0; i < SIZE && !moved; i++)
+      for (let j = 0; j < SIZE; j++)
+        if (board[i][j] !== old[i][j]) { moved = true; break; }
+    if (!moved) return;
+
+    score += gained;
+    updateScore();
+
+    newTilePos = addRandomTile();
+    mergedPositions = newMerges;
+    render();
+
+    if (gained > 0) playMerge(gained);
+    else            playMove();
+
+    // Vitória
+    if (!won && !keepPlaying) {
+      outer: for (let i = 0; i < SIZE; i++)
+        for (let j = 0; j < SIZE; j++)
+          if (board[i][j] === 2048) { won = true; break outer; }
+      if (won) {
+        playWin();
+        setTimeout(() => showOverlay(
+          '🎉 Você venceu!',
+          'Continue jogando para fazer mais pontos.',
+          'Continuar',
+          () => { keepPlaying = true; overlayEl.classList.remove('show'); }
+        ), 250);
+        return;
+      }
+    }
+
+    // Fim de jogo
+    if (!canMove()) {
+      gameOver = true;
+      setTimeout(() => {
+        showOverlay(
+          'Fim de jogo',
+          `Você fez ${score} ponto${score === 1 ? '' : 's'}.`,
+          'Jogar novamente',
+          startGame
+        );
+        playGameOver();
+      }, 300);
+    }
+  }
+
+  function canMove() {
+    for (let i = 0; i < SIZE; i++)
+      for (let j = 0; j < SIZE; j++) {
+        if (board[i][j] === 0) return true;
+        if (i < SIZE - 1 && board[i][j] === board[i + 1][j]) return true;
+        if (j < SIZE - 1 && board[i][j] === board[i][j + 1]) return true;
+      }
+    return false;
+  }
+
+  // ---------- Render ----------
+  function render() {
+    boardEl.innerHTML = '';
+    for (let i = 0; i < SIZE; i++) {
+      for (let j = 0; j < SIZE; j++) {
+        const cell = document.createElement('div');
+        cell.className = 'cell';
+        const v = board[i][j];
+        if (v > 0) {
+          const tile = document.createElement('div');
+          tile.className = 'tile';
+          tile.dataset.value = v;
+          tile.textContent = v;
+          if (newTilePos && newTilePos[0] === i && newTilePos[1] === j) tile.classList.add('pop');
+          if (mergedPositions.some(([r, c]) => r === i && c === j))      tile.classList.add('bump');
+          cell.appendChild(tile);
+        }
+        boardEl.appendChild(cell);
+      }
+    }
+  }
+
+  function showOverlay(title, text, btnText, onClick) {
+    overlayTitle.textContent = title;
+    overlayText.textContent  = text;
+    overlayBtn.textContent   = btnText;
+    overlayBtn.onclick       = onClick;
+    overlayEl.classList.add('show');
+  }
+
+  // ---------- Entrada ----------
+  const keyMap = {
+    ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+    w: 'up', s: 'down', a: 'left', d: 'right',
+    W: 'up', S: 'down', A: 'left', D: 'right'
+  };
+  document.addEventListener('keydown', (e) => {
+    const dir = keyMap[e.key];
+    if (dir) { e.preventDefault(); move(dir); }
+  });
+
+  document.querySelectorAll('.dpad button').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.preventDefault(); move(btn.dataset.dir); });
+  });
+
+  // Swipe no tabuleiro
+  let tx = 0, ty = 0, tracking = false;
+  boardEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length !== 1) return;
+    tx = e.touches[0].clientX; ty = e.touches[0].clientY; tracking = true;
+  }, { passive: true });
+  boardEl.addEventListener('touchend', (e) => {
+    if (!tracking) return;
+    tracking = false;
+    const dx = e.changedTouches[0].clientX - tx;
+    const dy = e.changedTouches[0].clientY - ty;
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (Math.max(adx, ady) < 24) return;
+    if (adx > ady) move(dx > 0 ? 'right' : 'left');
+    else           move(dy > 0 ? 'down'  : 'up');
+  }, { passive: true });
+
+  // Botões
+  document.getElementById('btn-start').addEventListener('click', startGame);
+  document.getElementById('btn-restart').addEventListener('click', startGame);
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    muteBtn.setAttribute('aria-label', muted ? 'Ativar som' : 'Silenciar');
+    if (!muted) { ensureAudio(); beep(520, 0.06, 'sine', 0.08); }
+  });
+
+  // ---------- Inicialização ----------
+  board = newBoard();
+  render();
+  showOverlay(
+    'Pronto para jogar?',
+    'Junte números iguais. Chegue em 2048!',
+    '▶ Iniciar',
+    () => { overlayEl.classList.remove('show'); startGame(); }
+  );
+})();
+</script>
+</body>
+</html>
